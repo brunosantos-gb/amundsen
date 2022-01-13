@@ -14,7 +14,8 @@ from flask import Response, make_response, jsonify
 from marshmallow import ValidationError
 from google.cloud import bigquery
 
-
+import json
+import decimal
 class BaseBigqueryPreviewClient(BasePreviewClient):
     """
     Returns a Response object, where the response data represents a json object
@@ -54,7 +55,7 @@ class BaseBigqueryPreviewClient(BasePreviewClient):
         return all_fields
 
     def get_preview_data(self, params: Dict, optionalHeaders: Dict = None) -> Response:
-        if self.previewable_projects and params["cluster"] not in self.previewable_projects:
+        if self.previewable_projects and params["cluster"] in self.previewable_projects:
             return make_response(jsonify({"preview_data": {}}), HTTPStatus.FORBIDDEN)
 
         preview_data = self._bq_list_rows(
@@ -65,7 +66,7 @@ class BaseBigqueryPreviewClient(BasePreviewClient):
         try:
             data = PreviewDataSchema().dump(preview_data)
             PreviewDataSchema().load(data)  # for validation only
-            payload = jsonify({"preview_data": data})
+            payload = json.dumps({"preview_data": data}, cls = Encoder)
             return make_response(payload, HTTPStatus.OK)
         except ValidationError as err:
             logging.error("PreviewDataSchema serialization error + " + str(err.messages))
@@ -75,3 +76,10 @@ class BaseBigqueryPreviewClient(BasePreviewClient):
 
     def get_feature_preview_data(self, params: Dict, optionalHeaders: Dict = None) -> Response:
         pass
+
+class Encoder(json.JSONEncoder):
+    """
+    Customized json encoder class to address the parsing of decimal/numeric data types into float.
+    """
+    def default(self, obj):
+        if isinstance(obj, decimal.Decimal): return float(obj)
